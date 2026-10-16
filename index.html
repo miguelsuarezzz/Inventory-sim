@@ -1,0 +1,371 @@
+<!--
+==========================================================================
+ FURNITURE INVENTORY SIMULATOR  (single file: index.html)
+==========================================================================
+
+ WHAT THIS IS
+ A simple simulation of a furniture warehouse (think Rooms To Go).
+ It has 6 products. You set the rules, then click "Run 1 day".
+ Each simulated day the program does three things, in this order:
+   1. DELIVERIES  - supplier orders that are due today arrive in stock.
+   2. SALES       - customers randomly order products. If we don't have
+                    enough stock, the missing sales are "lost sales".
+   3. REORDERING  - if stock (plus anything already on order) is at or
+                    below the "reorder point", we order more from the
+                    supplier. It arrives after the "lead time" in days.
+
+ HOW THE FILE IS ORGANIZED (top to bottom)
+   PART 1: <style>   - how it looks (colors, spacing)
+   PART 2: <body>    - what is on the page (inputs, buttons, tables)
+   PART 3: <script>  - the logic (the simulation itself)
+ Everything is in ONE file, so there is nothing to install or build.
+
+ HOW TO PUT THIS ON AZURE FOR FREE (Azure Static Web Apps, Free plan)
+ ------------------------------------------------------------------
+ You need: a free Azure account and a free GitHub account.
+
+ STEP 1  Make an Azure account
+         Go to https://azure.microsoft.com/free and sign up.
+         A card is needed to verify who you are. The Static Web Apps
+         "Free" plan used below does not charge you.
+
+ STEP 2  Make a GitHub account (skip if you have one)
+         Go to https://github.com and sign up.
+
+ STEP 3  Create a GitHub repository (a folder online for your code)
+         a) On GitHub click the "+" at the top right > "New repository".
+         b) Repository name:  inventory-sim
+         c) Choose "Public".
+         d) Click "Create repository".
+
+ STEP 4  Upload this file
+         a) In your new repository click "Add file" > "Upload files".
+         b) Drag this index.html in. (The file MUST be named index.html
+            and sit at the top level, not inside another folder.)
+         c) Click "Commit changes".
+
+ STEP 5  Create the Static Web App in Azure
+         a) Go to https://portal.azure.com and sign in.
+         b) In the top search bar type "Static Web Apps" and open it.
+         c) Click "Create".
+         d) Fill in the form:
+              Subscription:   your free subscription
+              Resource group: click "Create new", name it inventory-rg
+              Name:           inventory-sim
+              Plan type:      FREE   (important - do not pick Standard)
+              Region:         the one closest to you
+              Source:         GitHub
+         e) Click "Sign in with GitHub" and approve access.
+         f) Choose your Organization (your username), Repository
+            (inventory-sim) and Branch (main).
+
+ STEP 6  Tell Azure where your files are
+         Build Presets:    Custom
+         App location:     /
+         Api location:     (leave empty)
+         Output location:  (leave empty)
+
+ STEP 7  Click "Review + create", then "Create".
+         Azure automatically adds a deploy script to your GitHub repo.
+         This takes about 1 to 3 minutes. You can watch it under the
+         "Actions" tab in your GitHub repository (green check = done).
+
+ STEP 8  Open your website
+         In Azure click "Go to resource". On the Overview page, click
+         the URL (looks like https://something.azurestaticapps.net).
+         Your simulator is now live on the internet.
+
+ TO CHANGE IT LATER
+         On GitHub open index.html, click the pencil icon, edit, then
+         "Commit changes". Azure redeploys on its own in a minute or two.
+
+ TO AVOID ANY CHARGES WHEN FINISHED
+         In the Azure portal open "Resource groups", pick inventory-rg,
+         click "Delete resource group". That removes everything.
+==========================================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Makes the page fit phone screens -->
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Furniture Inventory Simulator</title>
+
+<!-- ======================= PART 1: LOOKS (CSS) ======================= -->
+<style>
+  /* Colors are stored as variables so they are easy to change in one place.
+     Try changing --accent to another color to restyle the buttons. */
+  :root { --ink:#1d2733; --muted:#5b6673; --line:#d6dbe1; --bg:#f6f7f9; --card:#fff; --accent:#1f4e79; --ok:#2e7d32; --low:#c77700; --out:#b3261e; }
+
+  /* If the viewer's device is in dark mode, use these colors instead */
+  @media (prefers-color-scheme: dark) {
+    :root { --ink:#e8ecf1; --muted:#9aa5b1; --line:#34404c; --bg:#141a21; --card:#1c242d; --accent:#6fa8dc; --ok:#6fcf74; --low:#f0b04a; --out:#ff8a80; }
+  }
+
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); line-height:1.5; }
+  main { max-width:960px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:1.6rem; margin:0 0 4px; }
+  h2 { font-size:1.05rem; margin:0 0 12px; }
+  p.sub { margin:0 0 20px; color:var(--muted); }
+
+  /* "section" = a white box on the page */
+  section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:16px; }
+
+  /* The rules inputs sit in a responsive grid */
+  .params { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; }
+  label { display:flex; flex-direction:column; font-size:.85rem; color:var(--muted); gap:4px; }
+  input { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); }
+  .buttons { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  button { font:inherit; padding:8px 14px; border-radius:6px; border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; }
+  button.alt { background:transparent; color:var(--accent); }
+  button:focus-visible, input:focus-visible, summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+  /* The four totals at the top */
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; }
+  .kpi b { display:block; font-size:1.5rem; }
+  .kpi span { color:var(--muted); font-size:.85rem; }
+
+  .scroll { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:.92rem; }
+  th, td { text-align:left; padding:8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  td.n, th.n { text-align:right; }
+
+  /* Status colors used in the table */
+  .ok { color:var(--ok); } .low { color:var(--low); } .out { color:var(--out); }
+
+  #log { max-height:240px; overflow:auto; font-size:.88rem; margin:0; padding-left:18px; }
+  #log li { margin-bottom:2px; }
+
+  /* The collapsible help boxes */
+  details { margin-bottom:8px; }
+  summary { cursor:pointer; font-weight:600; }
+  details ol, details ul { margin:8px 0 0; padding-left:20px; }
+  details li { margin-bottom:4px; }
+</style>
+</head>
+
+<!-- ===================== PART 2: THE PAGE (HTML) ===================== -->
+<body>
+<main>
+  <h1>Furniture Inventory Simulator</h1>
+  <p class="sub">Set the rules, then run days and watch stock, sales and reorders.</p>
+
+  <!-- Help boxes: click a title to open it -->
+  <section>
+    <details>
+      <summary>How this simulator works</summary>
+      <ol>
+        <li><b>Deliveries:</b> supplier orders due today arrive and are added to stock.</li>
+        <li><b>Sales:</b> each product gets a random number of customer orders. Orders we can't fill are counted as lost sales.</li>
+        <li><b>Reorder:</b> if stock plus items already on order is at or below the reorder point, a new supplier order is placed. It arrives after the lead time.</li>
+      </ol>
+      <p class="sub">Tip: set the reorder point very low and watch lost sales climb. Set it high and you never run out, but you hold a lot of stock.</p>
+    </details>
+    <details>
+      <summary>How to put this on Azure for free</summary>
+      <ol>
+        <li>Create a free account at azure.microsoft.com/free and a free GitHub account at github.com.</li>
+        <li>On GitHub: New repository, name it <code>inventory-sim</code>, choose Public, click Create.</li>
+        <li>Click Add file, then Upload files, drag in <code>index.html</code>, click Commit changes.</li>
+        <li>In portal.azure.com search for <b>Static Web Apps</b> and click Create.</li>
+        <li>Resource group: Create new, <code>inventory-rg</code>. Name: <code>inventory-sim</code>. Plan type: <b>Free</b>. Pick the closest region.</li>
+        <li>Source: GitHub. Sign in, then choose your repository and the <code>main</code> branch.</li>
+        <li>Build Presets: Custom. App location: <code>/</code>. Leave Api location and Output location empty.</li>
+        <li>Click Review + create, then Create. Wait 1 to 3 minutes while GitHub Actions deploys it.</li>
+        <li>Click Go to resource, then open the URL shown on the Overview page. Your site is live.</li>
+        <li>To update later, edit <code>index.html</code> on GitHub and commit. To stop all charges, delete the <code>inventory-rg</code> resource group.</li>
+      </ol>
+    </details>
+  </section>
+
+  <!-- The rules. Each input has an id so the script can read its value. -->
+  <section>
+    <h2>Rules</h2>
+    <div class="params">
+      <label>Starting stock per product<input id="startStock" type="number" min="0" value="40"></label>
+      <label>Reorder when stock falls to<input id="reorderPoint" type="number" min="0" value="15"></label>
+      <label>Units per reorder<input id="reorderQty" type="number" min="1" value="30"></label>
+      <label>Supplier lead time (days)<input id="leadTime" type="number" min="1" value="3"></label>
+      <label>Max customer orders per day (per product)<input id="maxDemand" type="number" min="1" value="8"></label>
+    </div>
+    <div class="buttons">
+      <button id="day1">Run 1 day</button>
+      <button id="day7">Run 7 days</button>
+      <button id="reset" class="alt">Reset with these rules</button>
+    </div>
+  </section>
+
+  <!-- Totals: the script fills in these numbers -->
+  <section>
+    <h2>Totals</h2>
+    <div class="kpis">
+      <div class="kpi"><b id="kDay">0</b><span>Day</span></div>
+      <div class="kpi"><b id="kSold">0</b><span>Units sold</span></div>
+      <div class="kpi"><b id="kLost">0</b><span>Sales lost (out of stock)</span></div>
+      <div class="kpi"><b id="kOrders">0</b><span>Supplier orders placed</span></div>
+    </div>
+  </section>
+
+  <!-- The stock table: the script builds the rows -->
+  <section>
+    <h2>Warehouse stock</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Product</th><th class="n">In stock</th><th class="n">On order</th><th class="n">Sold</th><th>Status</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Activity feed: newest event on top -->
+  <section>
+    <h2>Activity</h2>
+    <ol id="log" reversed></ol>
+  </section>
+</main>
+
+<!-- =================== PART 3: THE LOGIC (JavaScript) =================== -->
+<script>
+// ---------------------------------------------------------------------
+// THE PRODUCT LIST
+// "pop" is popularity from 0 to 1. A mattress (1.0) sells more than a
+// dining set (0.4). To add a product, add a new line here.
+// ---------------------------------------------------------------------
+const CATALOG = [
+  { name: "3-piece sectional sofa", pop: 0.6 },
+  { name: "Queen bed frame",        pop: 0.8 },
+  { name: "7-piece dining set",     pop: 0.4 },
+  { name: "Leather recliner",       pop: 0.7 },
+  { name: "Queen mattress",         pop: 1.0 },
+  { name: "Coffee table",           pop: 0.9 }
+];
+
+// "state" holds everything that changes: the day, totals, and each
+// product's stock. It is rebuilt whenever you click Reset.
+let state;
+
+// Small helpers:
+// $("kDay") is a shortcut for "find the page element with id kDay".
+const $ = id => document.getElementById(id);
+// val("leadTime") reads a number from an input box (0 if it is blank).
+const val = id => Math.max(0, parseInt($(id).value, 10) || 0);
+
+// ---------------------------------------------------------------------
+// RESET: read the rules from the input boxes and start fresh at day 0.
+// ---------------------------------------------------------------------
+function reset() {
+  state = {
+    day: 0, sold: 0, lost: 0, orders: 0,
+    // The rules are copied now so changing the boxes mid-run does nothing
+    // until you press Reset again. Math.max(1, ...) prevents a value of 0.
+    rules: {
+      reorderPoint: val("reorderPoint"),
+      reorderQty:   Math.max(1, val("reorderQty")),
+      leadTime:     Math.max(1, val("leadTime")),
+      maxDemand:    Math.max(1, val("maxDemand"))
+    },
+    // One record per product. "pending" is a list of supplier orders that
+    // have been placed but have not arrived yet, e.g. {qty:30, arrives:5}.
+    items: CATALOG.map(c => ({ ...c, stock: val("startStock"), sold: 0, pending: [] }))
+  };
+  $("log").innerHTML = "";
+  log("Simulation reset. Each product starts with " + val("startStock") + " units.");
+  render();
+}
+
+// ---------------------------------------------------------------------
+// LOG: add one line to the Activity list (newest shown first).
+// ---------------------------------------------------------------------
+function log(msg) {
+  const li = document.createElement("li");
+  li.textContent = (state.day ? "Day " + state.day + ": " : "") + msg;
+  $("log").prepend(li);
+}
+
+// ---------------------------------------------------------------------
+// RUN ONE DAY: this is the heart of the simulation.
+// ---------------------------------------------------------------------
+function runDay() {
+  state.day++;
+  const r = state.rules;
+
+  // Do the same three steps for every product
+  for (const it of state.items) {
+
+    // STEP 1 - DELIVERIES
+    // Find supplier orders whose arrival day is today (or earlier).
+    for (const p of it.pending.filter(p => p.arrives <= state.day)) {
+      it.stock += p.qty;                      // add them to stock
+      log(p.qty + " " + it.name + " delivered from supplier.");
+    }
+    // Keep only the orders that have not arrived yet.
+    it.pending = it.pending.filter(p => p.arrives > state.day);
+
+    // STEP 2 - CUSTOMER SALES
+    // Demand is a random number from 0 up to (max demand x popularity).
+    const demand = Math.round(Math.random() * r.maxDemand * it.pop);
+    // We can only sell what we have in stock.
+    const sold = Math.min(it.stock, demand);
+    it.stock -= sold;
+    it.sold  += sold;
+    state.sold += sold;
+    state.lost += demand - sold;              // demand we could not meet
+    if (demand > sold) {
+      log("Out of stock: " + (demand - sold) + " " + it.name + " order(s) lost.");
+    }
+
+    // STEP 3 - REORDER CHECK
+    // Count units already on the way so we don't order twice for the same gap.
+    const onOrder = it.pending.reduce((sum, p) => sum + p.qty, 0);
+    if (it.stock + onOrder <= r.reorderPoint) {
+      // Place an order that arrives after the supplier lead time.
+      it.pending.push({ qty: r.reorderQty, arrives: state.day + r.leadTime });
+      state.orders++;
+      log("Reordered " + r.reorderQty + " " + it.name + " (arrives day " + (state.day + r.leadTime) + ").");
+    }
+  }
+
+  render();   // refresh the numbers and table on screen
+}
+
+// ---------------------------------------------------------------------
+// RENDER: copy the current state onto the page.
+// ---------------------------------------------------------------------
+function render() {
+  // Fill in the four totals
+  $("kDay").textContent    = state.day;
+  $("kSold").textContent   = state.sold;
+  $("kLost").textContent   = state.lost;
+  $("kOrders").textContent = state.orders;
+
+  // Build one table row per product
+  $("rows").innerHTML = state.items.map(it => {
+    const onOrder = it.pending.reduce((sum, p) => sum + p.qty, 0);
+    // Pick a status word and color: 0 = out, at/below reorder point = low
+    const [cls, label] =
+      it.stock === 0                           ? ["out", "Out of stock"] :
+      it.stock <= state.rules.reorderPoint     ? ["low", "Low"]          :
+                                                 ["ok",  "Healthy"];
+    return `<tr>
+      <td>${it.name}</td>
+      <td class="n">${it.stock}</td>
+      <td class="n">${onOrder}</td>
+      <td class="n">${it.sold}</td>
+      <td class="${cls}">${label}</td></tr>`;
+  }).join("");
+}
+
+// ---------------------------------------------------------------------
+// BUTTONS: connect each button to what it should do when clicked.
+// ---------------------------------------------------------------------
+$("day1").onclick  = runDay;
+$("day7").onclick  = () => { for (let i = 0; i < 7; i++) runDay(); };
+$("reset").onclick = reset;
+
+// Start the simulation as soon as the page loads.
+reset();
+</script>
+</body>
+</html>
